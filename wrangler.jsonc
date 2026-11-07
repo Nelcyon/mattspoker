@@ -1,6 +1,6 @@
 // Cloudflare settings. Deployed automatically by .github/workflows/deploy.yml.
 {
-  "name": "poker-night",
+  "name": "mattspoker",
   "main": "src/server/worker.ts",
   "compatibility_date": "2026-09-01",
   "assets": {

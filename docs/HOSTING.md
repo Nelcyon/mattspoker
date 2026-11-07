@@ -10,9 +10,9 @@ and every change pushed to `main` goes online by itself.
      <https://dash.cloudflare.com/profile/api-tokens> (the Family Card Table token works too)
    - `CLOUDFLARE_ACCOUNT_ID`: shown on the right of *Workers & Pages* in the Cloudflare dashboard
 2. Open the *Actions* tab > **Deploy** > *Run workflow*. After about a minute the log ends with an address like
-   `https://poker-night.<your-name>.workers.dev`. That is the game. Send it around or link it from Family Card Table.
+   `https://mattspoker.<your-name>.workers.dev`. That is the game. Send it around or link it from Family Card Table.
 
-Want a nicer address such as `poker.yourname.com`? In the Cloudflare dashboard open the `poker-night` Worker >
+Want a nicer address such as `poker.yourname.com`? In the Cloudflare dashboard open the `mattspoker` Worker >
 *Settings > Domains & Routes* and add it.
 
 ## How games are kept safe
