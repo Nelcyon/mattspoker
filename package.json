@@ -1,0 +1,37 @@
+{
+  "name": "poker-night",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Texas Hold'em for a group of friends: phones and computers at one table, join with a game code and your name.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "node --watch src/server/node.ts",
+    "build": "vite build",
+    "start": "node src/server/node.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "deploy": "npm run build && wrangler deploy",
+    "dev:cloudflare": "npm run build && wrangler dev"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261004.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/ws": "^8.5.12",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "5.9",
+    "vite": "^7.1.0",
+    "wrangler": "^4.147.0",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,17 @@
+// Cloudflare settings. Deployed automatically by .github/workflows/deploy.yml.
+{
+  "name": "poker-night",
+  "main": "src/server/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/ws/*", "/api/*", "/health"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "GAME", "class_name": "PokerGame" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PokerGame"] }],
+  "observability": { "enabled": true }
+}
