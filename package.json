@@ -6,10 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "node --watch src/server/node.ts",
+    "dev:server": "node --experimental-strip-types --watch src/server/node.ts",
     "build": "vite build",
-    "start": "node src/server/node.ts",
-    "test": "node --test \"test/**/*.test.ts\"",
+    "start": "node --experimental-strip-types src/server/node.ts",
+    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
     "deploy": "npm run build && wrangler deploy",
     "dev:cloudflare": "npm run build && wrangler dev"
