@@ -190,6 +190,7 @@ button {
 .home {
   min-height: 100dvh;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
 }
