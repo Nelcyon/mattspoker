@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { type Conn, newRoomState, Room, type RoomState } from '../src/server/room.ts';
+import { type Conn, newRoomState, Room, type RoomState, STALE_MS } from '../src/server/room.ts';
 import type { ClientMsg, ServerMsg, TableView } from '../src/shared/protocol.ts';
 
 class FakeConn implements Conn {
@@ -44,13 +44,19 @@ class Table {
   clock = 1_000_000;
   conns: FakeConn[] = [];
   saved: string = '';
+  /** How many times the room asked the host to write the table, and how many times it was woken. */
+  saves = 0;
+  ticks = 0;
   wake: number | null = null;
   room: Room;
   constructor(state?: RoomState) {
     this.room = new Room(state ?? newRoomState('ABCD', this.clock), {
       conns: () => this.conns.filter((c) => c.open),
       now: () => this.clock,
-      persist: (s) => (this.saved = JSON.stringify(s)),
+      persist: (s) => {
+        this.saves++;
+        this.saved = JSON.stringify(s);
+      },
       wakeAt: (at) => (this.wake = at),
     });
   }
@@ -71,7 +77,10 @@ class Table {
       const step = Math.min(1000, end - this.clock);
       this.clock += step;
       for (const c of alive) c.seen = this.clock;
-      if (this.wake !== null && this.wake <= this.clock) this.room.tick();
+      if (this.wake !== null && this.wake <= this.clock) {
+        this.ticks++;
+        this.room.tick();
+      }
     }
   }
 }
@@ -300,4 +309,95 @@ test('host who disappears can be replaced', () => {
   assert.equal(b.view.canClaimHost, true);
   b.say({ t: 'claimHost' });
   assert.equal(b.view.hostId, b.pid);
+});
+
+const stateCount = (c: FakeConn) => c.inbox.filter((m) => m.t === 'state').length;
+
+test('an idle table with everyone connected writes and sends nothing new', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  const b = t.join('Bob');
+  const saves = t.saves;
+  const sentA = stateCount(a);
+  const sentB = stateCount(b);
+  const ticks = t.ticks;
+  t.advance(30 * 60_000);
+  assert.ok(t.ticks - ticks >= 30, 'the room still wakes now and then to look for dropped connections');
+  // The only writes allowed are the occasional "someone is still here" mark (at most one per 10 minutes).
+  assert.ok(t.saves - saves <= 3, `saves went from ${saves} to ${t.saves}`);
+  assert.equal(stateCount(a), sentA, 'identical tables are not sent again');
+  assert.equal(stateCount(b), sentB);
+  // A real action is still saved and sent.
+  a.say({ t: 'host', op: 'settings', settings: { smallBlind: 10, bigBlind: 20 } });
+  assert.equal(t.saves - saves >= 1, true);
+  assert.equal(stateCount(a), sentA + 1);
+  assert.equal(stateCount(b), sentB + 1);
+});
+
+test('the next wake is when the quietest connection would count as dropped', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  const b = t.join('Bob');
+  a.seen = t.clock - 5_000;
+  b.seen = t.clock - 2_000;
+  t.room.tick();
+  assert.equal(t.wake, a.seen + STALE_MS);
+  // Nobody connected: nothing to watch, only the long idle cleanup remains.
+  a.close();
+  b.close();
+  t.room.tick();
+  assert.ok(t.wake! > t.clock + 24 * 3600_000);
+});
+
+test('a connection that goes silent is noticed as soon as it counts as dropped', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  const b = t.join('Bob');
+  t.advance(20_000);
+  const lastHeard = a.seen;
+  let noticed = -1;
+  for (let i = 0; i < 120 && noticed < 0; i++) {
+    t.advance(1000, [b]);
+    if (!b.view.players.find((p) => p.id === a.pid)!.online) noticed = t.clock - lastHeard;
+  }
+  assert.ok(noticed >= STALE_MS && noticed <= STALE_MS + 1000, `noticed after ${noticed} ms`);
+});
+
+test('a connection that looked dropped but is still open comes back without a message', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  const b = t.join('Bob');
+  t.advance(60_000, [b]);
+  assert.equal(b.view.players.find((p) => p.id === a.pid)!.online, false);
+  a.seen = t.clock; // heartbeats resume (answered without waking the room)
+  t.advance(11_000);
+  assert.equal(b.view.players.find((p) => p.id === a.pid)!.online, true);
+});
+
+test('joining or reconnecting always gets the table, even if it has not changed', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  const b = t.join('Bob');
+  t.room.tick();
+  const before = stateCount(a);
+  // Same connection joins again (e.g. taking over / re-sending its join).
+  a.say({ t: 'join', name: 'Alice', token: a.welcome!.token });
+  assert.equal(stateCount(a), before + 1);
+  // A brand new connection for the same seat.
+  const a2 = t.join('Alice', a.welcome!.token);
+  assert.equal(stateCount(a2), 1);
+  assert.equal(a2.view.players.length, 2);
+  assert.ok(b.view);
+});
+
+test('the host gets the take-over option right when the 60 seconds are up', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  const b = t.join('Bob');
+  a.close();
+  t.room.disconnect(a);
+  t.advance(59_000, [b]);
+  assert.equal(b.view.canClaimHost, false);
+  t.advance(2_000, [b]);
+  assert.equal(b.view.canClaimHost, true);
 });

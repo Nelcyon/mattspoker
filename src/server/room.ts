@@ -38,6 +38,8 @@ export interface Conn {
   close(code: number, reason: string): void;
   /** Saves pid/hidden so they survive the host going to sleep. */
   save(): void;
+  /** The table this connection was last sent (without the clock). Kept by the Room so it can skip identical sends. */
+  lastView?: string;
 }
 
 export interface RoomHost {
@@ -96,7 +98,12 @@ export interface RoomState {
 export const IDLE_DELETE_MS = 3 * 24 * 60 * 60 * 1000;
 /** A connection we have not heard from (no heartbeat) for this long is treated as gone. */
 export const STALE_MS = 40_000;
+/** A connection that already looks dead is re-checked this often (it may have come back without sending anything). */
 const PRESENCE_CHECK_MS = 10_000;
+/** ...but only for this long after it went quiet; after that a message or a close is what brings it back. */
+const STALE_RECHECK_MAX_MS = 3 * 60_000;
+/** lastActivity only needs to be right to within this much (rooms are deleted after days). */
+const ACTIVITY_BUMP_MS = 10 * 60_000;
 const DEAL_DELAY_MS = 900;
 const RUNOUT_DELAY_MS = 1700;
 const NEXT_HAND_MS = 4000;
@@ -170,6 +177,8 @@ type Presence = 'online' | 'away' | 'offline';
 
 export class Room {
   private lastReaction = new Map<string, number>();
+  /** The state as last handed to host.persist (or known to be saved already), to skip writes that change nothing. */
+  private saved: string | null = null;
 
   state: RoomState;
   private host: RoomHost;
@@ -400,6 +409,7 @@ export class Room {
     if (!s.hostId || !this.player(s.hostId) || this.player(s.hostId)!.left) s.hostId = p.id;
     conn.pid = p.id;
     conn.hidden = false;
+    conn.lastView = undefined; // a (re)join always gets a fresh table
     conn.save();
     conn.send({ t: 'welcome', pid: p.id, token: p.token, code: s.code });
     this.scheduleNextHandIfReady();
@@ -781,20 +791,31 @@ export class Room {
     }
   }
 
-  /** Runs timers, saves, sends everyone the new table, and asks to be woken for the next event. */
+  /** Tells the room that its current state is already saved (the host just loaded it, or wrote it itself). */
+  markPersisted() {
+    this.saved = JSON.stringify(this.state);
+  }
+
+  /** Runs timers, saves if anything changed, sends the new table to whoever's view changed, and asks to be woken. */
   commit() {
     const s = this.state;
     this.refreshPresence();
     this.runTimers();
     this.refreshPresence();
-    if (this.host.conns().some((c) => c.pid)) s.lastActivity = this.now();
-    this.host.persist(s);
+    const now = this.now();
+    if (now - s.lastActivity >= ACTIVITY_BUMP_MS && this.host.conns().some((c) => c.pid)) s.lastActivity = now;
+    const json = JSON.stringify(s);
+    if (json !== this.saved) {
+      this.saved = json;
+      this.host.persist(s);
+    }
     this.broadcast();
     this.host.wakeAt(this.nextWake());
   }
 
   nextWake(): number | null {
     const s = this.state;
+    const now = this.now();
     const times: number[] = [s.lastActivity + IDLE_DELETE_MS];
     if (!s.paused) {
       if (s.dealAt !== null) times.push(s.dealAt);
@@ -802,8 +823,23 @@ export class Room {
       if (d !== null) times.push(d);
       if (s.nextHandAt !== null) times.push(s.nextHandAt);
     }
-    // While anyone is connected, check now and then for connections that went quiet.
-    if (this.host.conns().some((c) => c.pid)) times.push(this.now() + PRESENCE_CHECK_MS);
+    const live = this.host.conns().filter((c) => c.pid);
+    if (live.length > 0) {
+      // Wake when the quietest connection would first count as gone, not on a fixed beat. Heartbeats are answered
+      // without waking us, so on waking we look again and, if everyone is still fine, sleep until the next one.
+      let recheck = false;
+      for (const c of live) {
+        const seen = c.lastSeen();
+        const age = now - seen;
+        if (age < STALE_MS) times.push(seen + STALE_MS);
+        else if (age < STALE_MS + STALE_RECHECK_MAX_MS) recheck = true;
+      }
+      if (recheck) times.push(now + PRESENCE_CHECK_MS);
+      // The host is gone: the others get "take over as host" once they have been away long enough.
+      const h = this.player(s.hostId);
+      if (h && !h.left && h.awaySince !== null && this.presence(h.id) === 'offline' && h.awaySince + HOST_CLAIM_MS > now)
+        times.push(h.awaySince + HOST_CLAIM_MS);
+    }
     return Math.min(...times);
   }
 
@@ -812,16 +848,20 @@ export class Room {
     return this.now() - this.state.lastActivity >= IDLE_DELETE_MS && !this.host.conns().some((c) => c.pid);
   }
 
+  /** Sends each connection its table, unless it is exactly what that connection already has (apart from the clock). */
   broadcast() {
-    const views = new Map<string, TableView>();
+    const views = new Map<string, { v: TableView; key: string }>();
     for (const c of this.host.conns()) {
       if (!c.pid) continue;
-      let v = views.get(c.pid);
-      if (!v) {
-        v = this.view(c.pid);
-        views.set(c.pid, v);
+      let e = views.get(c.pid);
+      if (!e) {
+        const v = this.view(c.pid);
+        e = { v, key: JSON.stringify({ ...v, serverTime: 0 }) };
+        views.set(c.pid, e);
       }
-      c.send({ t: 'state', s: v });
+      if (c.lastView === e.key) continue;
+      c.lastView = e.key;
+      c.send({ t: 'state', s: e.v });
     }
   }
 

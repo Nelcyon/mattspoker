@@ -70,7 +70,9 @@ if (PERSIST && existsSync(DATA)) {
     if (!f.endsWith('.json')) continue;
     try {
       const state = JSON.parse(readFileSync(join(DATA, f), 'utf8')) as RoomState;
-      makeGame(state).room.tick();
+      const g = makeGame(state);
+      g.room.markPersisted(); // it was just read from disk
+      g.room.tick();
     } catch (e) {
       console.error('Could not load', f, e);
     }

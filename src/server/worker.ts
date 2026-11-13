@@ -1,7 +1,9 @@
 // Runs Poker Night on Cloudflare's free plan.
 // The app is served as static files. Each game (game code) is one Durable Object that holds the table and
-// everyone's connections. Connections use the WebSocket Hibernation API, so a game that is waiting costs nothing
-// and keeps every connection open; the table is saved after every change and survives restarts and deploys.
+// everyone's connections. Connections use the WebSocket Hibernation API and heartbeats are answered without waking
+// the game, so a game with nobody connected sleeps until its 3-day cleanup, and one with people connected wakes
+// only when something happens or a connection is about to count as dropped. The table is saved after every
+// change (and only when something changed), so it survives restarts and deploys.
 import { DurableObject } from 'cloudflare:workers';
 import {
   type Conn,
@@ -76,7 +78,10 @@ export class PokerGame extends DurableObject<Env> {
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     ctx.blockConcurrencyWhile(async () => {
       this.state = (await ctx.storage.get<RoomState>('room')) ?? null;
-      if (this.state) this.room = new Room(this.state, this.host());
+      if (this.state) {
+        this.room = new Room(this.state, this.host());
+        this.room.markPersisted(); // it was just read from storage, so don't write it straight back
+      }
     });
   }
 
@@ -135,6 +140,7 @@ export class PokerGame extends DurableObject<Env> {
       this.state = newRoomState(code, Date.now());
       this.room = new Room(this.state, this.host());
       await this.ctx.storage.put('room', this.state);
+      this.room.markPersisted();
       this.room.commit();
       return new Response('ok');
     }

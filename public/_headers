@@ -1,0 +1,5 @@
+# Cloudflare static-asset headers. Vite puts a content hash in every file name under /assets/, so a given URL never
+# changes and browsers can keep it forever. index.html (and everything else) keeps Cloudflare's default
+# "check with the server every time" caching, so a new deploy is picked up on the next visit.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

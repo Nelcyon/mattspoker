@@ -23,8 +23,11 @@ and everybody's app reconnects by itself. Games nobody has opened for 3 days are
 
 ## Free plan limits
 
-A party of up to ten people uses a tiny fraction of the free allowance (100,000 requests a day; connections that are
-just waiting cost nothing thanks to WebSocket hibernation).
+A party of up to ten people uses a small fraction of the free allowance (100,000 requests a day and 100,000 saved
+writes a day). The phones' heartbeats are answered without waking the game. While someone is connected the game also
+wakes by itself, about once every 35 to 40 seconds, to notice a connection that has gone quiet (roughly 100 wake-ups
+an hour); it only saves the table when something changed. With nobody connected it sleeps until the 3-day cleanup.
+These numbers are estimates from the code and Cloudflare's published billing rules, not measurements.
 
 ## Running it somewhere else
 
