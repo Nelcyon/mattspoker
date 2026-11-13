@@ -228,10 +228,6 @@ function HostControls({ view, send }: { view: TableView; send: Send }) {
             ))}
           </select>
         </label>
-        <label className="check">
-          <input type="checkbox" checked={s.allowRebuys} onChange={(e) => setS({ ...s, allowRebuys: e.target.checked })} />
-          <span>Players can buy back in when out of chips</span>
-        </label>
       </div>
       <p className="muted small">
         Changes to blinds and chips apply from the next hand. Players who step away are checked or folded after 30 seconds, but keep their seat.

@@ -10,8 +10,6 @@ export interface Settings {
   turnSeconds: number;
   /** Minutes between blind increases. 0 = blinds stay the same. */
   blindLevelMinutes: number;
-  /** Players who run out of chips may buy back in for the starting stack. */
-  allowRebuys: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -20,7 +18,6 @@ export const DEFAULT_SETTINGS: Settings = {
   bigBlind: 10,
   turnSeconds: 0,
   blindLevelMinutes: 0,
-  allowRebuys: true,
 };
 
 export const MAX_SEATS = 10;
@@ -37,7 +34,6 @@ export type ClientMsg =
   | { t: 'act'; handId: number; action: 'fold' | 'check' | 'call' | 'raise'; to?: number }
   | { t: 'sitOut' }
   | { t: 'sitIn' }
-  | { t: 'rebuy' }
   | { t: 'sit'; seat: number }
   | { t: 'leave' }
   | { t: 'show' }
@@ -92,7 +88,6 @@ export interface PlayerView {
   handName: string | null;
   /** The five cards that made their hand at showdown. */
   best: Card[] | null;
-  rebuys: number;
 }
 
 export interface YourTurn {

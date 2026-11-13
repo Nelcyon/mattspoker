@@ -13,7 +13,7 @@ the browser: no app to install, no accounts.
   taken) until they tap *I'm back*. The host can turn on a turn clock, or give one slow player 20 seconds.
 - **Settings button** (top right, shows the game code): code, link, QR code, sounds, vibration, keep screen on,
   four-colour suits, larger text, sit out, leave. The host also gets blinds, starting chips, turn clock, blinds that go up
-  over time, rebuys, pause, set anyone's chips, make someone else host, and remove a player.
+  over time, pause, set anyone's chips, make someone else host, and remove a player.
 - **Proper rules:** blinds and button (including heads-up), minimum raises, all-ins that don't reopen betting, side pots,
   split pots with odd chips, uncalled bets returned, and plain-English hand names ("Full house, kings full of threes").
 - **Computer friendly:** keyboard shortcuts F (fold), C (check/call), R (bet/raise), arrows, Enter and Esc. Big buttons,

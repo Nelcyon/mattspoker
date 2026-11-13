@@ -671,7 +671,7 @@ function Seat({
       : p.status === 'sittingOut'
         ? 'Sitting out'
         : p.status === 'busted'
-          ? 'Out of chips'
+          ? 'Out'
           : p.status === 'waiting'
             ? 'Next hand'
             : null;
@@ -833,14 +833,7 @@ function ActionArea({
         </button>
       );
   } else if (me.status === 'busted' && !(hand && !hand.done && me.inHand)) {
-    content =
-      view.settings.allowRebuys || isHost ? (
-        <button className="btn primary big grow" onClick={() => send({ t: 'rebuy' })}>
-          Buy back in ({fmt(view.settings.startingStack)})
-        </button>
-      ) : (
-        <div className="wait-msg">You're out of chips. Thanks for playing!</div>
-      );
+    content = <div className="wait-msg">You're out. You can keep watching.</div>;
   } else if (me.status === 'sittingOut' && !(hand && !hand.done && me.inHand && !me.folded)) {
     content = (
       <button className="btn primary big grow" onClick={() => send({ t: 'sitIn' })}>

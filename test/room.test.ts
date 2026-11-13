@@ -401,3 +401,63 @@ test('the host gets the take-over option right when the 60 seconds are up', () =
   t.advance(2_000, [b]);
   assert.equal(b.view.canClaimHost, true);
 });
+
+test('elimination: a player at 0 chips is out, dealt no cards, pays no blinds, and cannot buy back in', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  const b = t.join('Bob');
+  const c = t.join('Cara');
+  a.say({ t: 'host', op: 'setStack', pid: c.pid!, stack: 0 });
+  a.say({ t: 'host', op: 'start' });
+  const seatOf = (id: string) => a.view.players.find((p) => p.id === id)!.seat;
+  for (let hands = 1; hands <= 2; hands++) {
+    const v = a.view;
+    assert.equal(v.hand!.id, hands);
+    const cara = v.players.find((p) => p.id === c.pid)!;
+    assert.equal(cara.status, 'busted');
+    assert.equal(cara.inHand, false);
+    assert.equal(cara.cards, null);
+    assert.equal(cara.bet, 0);
+    assert.equal(cara.stack, 0);
+    assert.notEqual(v.hand!.sbSeat, cara.seat);
+    assert.notEqual(v.hand!.bbSeat, cara.seat);
+    assert.equal(v.players.filter((p) => p.inHand).length, 2);
+    // She keeps her seat as a watcher, and sees the table but not anyone's hole cards.
+    assert.ok(cara.seat !== null);
+    assert.equal(seatOf(c.pid!), cara.seat);
+    assert.equal(c.view.players.filter((p) => p.cards).length, 0);
+    // Play the hand out and wait for the next one.
+    let guard = 0;
+    while (!a.view.hand!.done && guard++ < 50) {
+      if (a.view.hand!.toAct) {
+        const x = toActConn(t);
+        x.say({ t: 'act', handId: x.view.hand!.id, action: x.view.you_turn!.canCheck ? 'check' : 'call' });
+      } else t.advance(2000);
+    }
+    if (hands === 1) t.advance(8000);
+  }
+  // Rebuying no longer exists, even for the host.
+  c.say({ t: 'rebuy' } as unknown as ClientMsg);
+  a.say({ t: 'rebuy' } as unknown as ClientMsg);
+  assert.equal(c.view.players.find((p) => p.id === c.pid)!.stack, 0);
+  assert.equal(a.view.players.find((p) => p.id === a.pid)!.stack + b.view.players.find((p) => p.id === b.pid)!.stack, 2000);
+  assert.equal('allowRebuys' in a.view.settings, false);
+  assert.equal('rebuys' in a.view.players[0], false);
+});
+
+test('a game saved before rebuys were removed still loads, and the old fields are ignored', () => {
+  const t = new Table();
+  const a = t.join('Alice');
+  t.join('Bob');
+  a.say({ t: 'host', op: 'start' });
+  const old = JSON.parse(t.saved);
+  old.settings.allowRebuys = true;
+  for (const p of old.players) p.rebuys = 1;
+  const t2 = new Table(old);
+  t2.clock = t.clock;
+  const a2 = t2.join('Alice', a.welcome!.token);
+  assert.equal(a2.view.hand!.id, a.view.hand!.id);
+  assert.equal('allowRebuys' in a2.view.settings, false);
+  assert.equal('rebuys' in a2.view.players[0], false);
+  assert.equal('allowRebuys' in t2.room.state.settings, false);
+});

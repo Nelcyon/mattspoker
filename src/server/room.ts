@@ -60,7 +60,6 @@ export interface PlayerRec {
   sittingOut: boolean;
   /** Turns in a row that were played automatically. */
   timeouts: number;
-  rebuys: number;
   /** Chips set by the host while this player was in a hand; applied when it ends. */
   pendingStack: number | null;
   left: boolean;
@@ -184,6 +183,9 @@ export class Room {
   private host: RoomHost;
 
   constructor(state: RoomState, host: RoomHost) {
+    // Games saved before rebuys were removed still carry the old fields; drop them.
+    delete (state.settings as { allowRebuys?: boolean }).allowRebuys;
+    for (const p of state.players) delete (p as { rebuys?: number }).rebuys;
     this.state = state;
     this.host = host;
   }
@@ -390,7 +392,6 @@ export class Room {
         stack: s.settings.startingStack,
         sittingOut: false,
         timeouts: 0,
-        rebuys: 0,
         pendingStack: null,
         left: false,
         awaySince: null,
@@ -451,16 +452,6 @@ export class Room {
         me.sittingOut = false;
         me.timeouts = 0;
         this.log(`${me.name} is back in`);
-        this.scheduleNextHandIfReady();
-        break;
-      case 'rebuy':
-        if (!s.settings.allowRebuys && !isHost) throw new ActionError('Rebuys are turned off for this game.');
-        if (me.stack > 0 || this.inActiveHand(me.id)) throw new ActionError('You can buy back in once you are out of chips.');
-        me.stack = s.settings.startingStack;
-        me.rebuys++;
-        me.sittingOut = false;
-        me.timeouts = 0;
-        this.log(`${me.name} bought back in for ${me.stack}`);
         this.scheduleNextHandIfReady();
         break;
       case 'sit':
@@ -615,7 +606,6 @@ export class Room {
       if (!BLIND_MINUTES_OPTIONS.includes(m)) throw new ActionError('Pick one of the blind timer choices.');
       next.blindLevelMinutes = m;
     }
-    if (input.allowRebuys !== undefined) next.allowRebuys = !!input.allowRebuys;
 
     const changed: string[] = [];
     if (next.smallBlind !== cur.smallBlind || next.bigBlind !== cur.bigBlind) {
@@ -630,11 +620,10 @@ export class Room {
     if (next.startingStack !== cur.startingStack) changed.push(`starting chips ${next.startingStack}`);
     if (next.turnSeconds !== cur.turnSeconds)
       changed.push(next.turnSeconds ? `turn clock ${next.turnSeconds} seconds` : 'no turn clock');
-    if (next.allowRebuys !== cur.allowRebuys) changed.push(next.allowRebuys ? 'rebuys on' : 'rebuys off');
     s.settings = next;
     // Before the game starts, everyone gets the new starting stack.
     if (!s.started && next.startingStack !== cur.startingStack)
-      for (const p of s.players) if (p.rebuys === 0) p.stack = next.startingStack;
+      for (const p of s.players) p.stack = next.startingStack;
     if (changed.length) this.log(`Host changed: ${changed.join(', ')}`);
   }
 
@@ -724,7 +713,7 @@ export class Room {
         p.pendingStack = null;
         this.log(`${p.name}'s chips are now ${p.stack}`);
       }
-      if (p.stack === 0 && !p.left) this.log(`${p.name} is out of chips${s.settings.allowRebuys ? ' (they can buy back in)' : ''}`);
+      if (p.stack === 0 && !p.left) this.log(`${p.name} is out`);
     });
     s.lastButtonSeat = hand.buttonSeat;
     s.nextHandAt = this.now() + (r.uncontested ? NEXT_HAND_MS : NEXT_HAND_SHOWDOWN_MS + (hand.runout ? 1000 : 0));
@@ -909,7 +898,6 @@ export class Room {
           won: done && r ? (r.won[i] ?? 0) : 0,
           handName: showdown && hs && !hs.folded ? (r!.hands[i]?.name ?? null) : null,
           best: showdown && hs && !hs.folded ? (r!.hands[i]?.best ?? null) : null,
-          rebuys: p.rebuys,
         };
       });
 
