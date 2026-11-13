@@ -263,7 +263,8 @@ function PlayerAdmin({ p, view, send }: { p: PlayerView; view: TableView; send: 
         <span className="pname">
           {p.name}
           {isMe ? ' (you)' : ''}
-          {p.isHost ? ' ★' : ''}
+          {p.isHost ? ' (host)' : ''}
+          {!p.online ? ' · offline' : p.away ? ' · away' : ''}
         </span>
         <span className="pstack">{fmt(p.stack)}</span>
         <span className="chev" aria-hidden>

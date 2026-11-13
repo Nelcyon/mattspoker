@@ -16,19 +16,22 @@ export function PlayingCard({
   dim = false,
   highlight = false,
   className = '',
+  style,
 }: {
   card: Card | null;
   size?: 'sm' | 'md' | 'lg';
   dim?: boolean;
   highlight?: boolean;
   className?: string;
+  style?: React.CSSProperties;
 }) {
-  if (!card) return <div className={`card back ${size} ${className}`} aria-label="Face-down card" />;
+  if (!card) return <div className={`card back ${size} ${className}`} style={style} aria-label="Face-down card" />;
   const rank = card[0] === 'T' ? '10' : card[0];
   const suit = card[1];
   return (
     <div
       className={`card face ${size} suit-${suit} ${dim ? 'dim' : ''} ${highlight ? 'hl' : ''} ${className}`}
+      style={style}
       aria-label={cardLabel(card)}
       role="img"
     >

@@ -21,10 +21,7 @@
   --card-md: clamp(38px, 11vw, 70px);
   --card-lg: clamp(58px, 17vw, 88px);
   --seat-w: clamp(64px, 19vw, 104px);
-  --avatar: clamp(36px, 10vw, 52px);
   --fs: 16px;
-  --offx: calc(var(--seat-w) * 0.95);
-  --offy: calc(var(--seat-w) * 1.2);
   color-scheme: dark;
   -webkit-tap-highlight-color: transparent;
 }
@@ -41,7 +38,6 @@ html.big-text {
     --card-md: 74px;
     --card-lg: 96px;
     --seat-w: 128px;
-    --avatar: 56px;
     --fs: 17px;
   }
   .felt-wrap {
@@ -375,19 +371,30 @@ button {
 .blinds .sub {
   font-size: 0.8em;
 }
-.code-btn {
+.top-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  min-width: 44px;
   height: 44px;
   padding: 0 12px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.06);
+  font-weight: 700;
+}
+.code-btn {
+  line-height: 1.1;
 }
 .code-btn .code {
   font-weight: 800;
   letter-spacing: 0.15em;
+}
+.code-btn .lbl {
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--muted);
 }
 .net-banner {
   position: fixed;
@@ -622,11 +629,12 @@ button {
     0 0 18px rgba(242, 193, 78, 0.8);
 }
 .deal-in {
-  animation: dealIn 0.35s ease-out;
+  animation: dealIn 0.45s ease-out backwards;
 }
+/* --dx / --dy: the way back to the dealer, measured when the card is dealt (see TableScreen). */
 @keyframes dealIn {
   from {
-    transform: translateY(-14px) rotateY(80deg);
+    transform: translate(var(--dx, 0px), var(--dy, -14px)) scale(0.45) rotateY(80deg);
     opacity: 0;
   }
 }
@@ -646,6 +654,13 @@ button {
   align-items: center;
   z-index: 2;
   transition: opacity 0.2s;
+}
+/* Seats along the bottom edge hang from the table edge, so their tags never run off the bottom of the screen. */
+.seat.low {
+  transform: translate(-50%, calc(-100% + 38px));
+}
+.seat.low.me {
+  transform: translate(-50%, calc(-100% + 26px));
 }
 .seat-cards {
   display: flex;
@@ -693,7 +708,7 @@ button {
   font-size: 0.6em;
   padding: 0 5px;
   border-radius: 7px;
-  max-width: 76px;
+  max-width: max(76px, calc(var(--seat-w) * 0.75));
 }
 .tabled {
   position: absolute;
@@ -748,8 +763,8 @@ button {
   transform: rotateY(180deg);
 }
 .tabled-pill {
-  background: var(--c);
-  color: var(--on);
+  background: rgba(6, 18, 12, 0.94);
+  color: #fff;
   text-shadow: none;
   font-weight: 700;
   font-size: 0.72em;
@@ -757,9 +772,14 @@ button {
   text-align: center;
   padding: 1px 8px;
   border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--line);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
   max-width: calc(var(--seat-w) + 8px);
+}
+@media (min-width: 900px) {
+  .tabled-pill {
+    max-width: 150px;
+  }
 }
 .tabled-pill .nm,
 .tabled-pill .hn {
@@ -788,63 +808,15 @@ button {
     opacity: 0;
   }
 }
-.avatar {
-  --ring: 1;
-  position: relative;
-  z-index: 1;
-  width: var(--avatar);
-  height: var(--avatar);
-  border-radius: 50%;
-  background: var(--c);
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: calc(var(--avatar) * 0.45);
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  border: 3px solid #0b1a13;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
-}
-.seat.to-act .avatar {
-  border-color: var(--gold);
-  box-shadow:
-    0 0 0 3px rgba(242, 193, 78, 0.35),
-    0 0 22px rgba(242, 193, 78, 0.7);
-  animation: glow 1.4s ease-in-out infinite;
-}
-.seat.to-act .avatar[data-ring='true']::before {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  background: conic-gradient(var(--gold) calc(var(--ring) * 360deg), transparent 0);
-  -webkit-mask: radial-gradient(circle, transparent 62%, #000 63%);
-  mask: radial-gradient(circle, transparent 62%, #000 63%);
-}
 @keyframes glow {
   50% {
     box-shadow:
-      0 0 0 5px rgba(242, 193, 78, 0.2),
-      0 0 30px rgba(242, 193, 78, 0.9);
+      0 0 0 4px rgba(242, 193, 78, 0.2),
+      0 0 26px rgba(242, 193, 78, 0.9);
   }
 }
-.host-badge {
-  position: absolute;
-  right: -6px;
-  top: -6px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--gold);
-  color: #3a2a00;
-  font-size: 12px;
-  display: grid;
-  place-items: center;
-  text-shadow: none;
-  border: 2px solid #0b1a13;
-}
 .plate {
-  margin-top: -6px;
+  position: relative;
   z-index: 2;
   background: rgba(6, 18, 12, 0.92);
   border: 1px solid var(--line);
@@ -854,6 +826,7 @@ button {
   min-width: 100%;
   max-width: 100%;
   line-height: 1.15;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
 }
 .plate .name {
   font-weight: 700;
@@ -880,33 +853,77 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.seat .tag.win {
+.seat .tag.win,
+.seat .tag.act {
   background: var(--gold);
   color: #2a1c00;
 }
-.seat .tag.hand-name {
+.seat .tag.hand {
   background: rgba(242, 193, 78, 0.2);
   color: #fff1c2;
 }
-.seat.folded .avatar,
+/* Small plain-word roles under the name: Small blind, Big blind, Host. */
+.seat .roles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 2px;
+  max-width: calc(var(--seat-w) + 16px);
+}
+.seat .tag.role {
+  margin-top: 0;
+  font-size: 0.64em;
+  font-weight: 600;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #dff3e8;
+}
+.seat.to-act .plate {
+  border-color: var(--gold);
+  animation: glow 1.4s ease-in-out infinite;
+}
+.seat.winner .plate {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px rgba(242, 193, 78, 0.85);
+}
+/* How long the player to act has left, as a bar along the bottom of the name tag. */
+.plate .clock {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.plate .clock i {
+  display: block;
+  height: 100%;
+  background: var(--gold);
+}
+.plate:has(.clock) {
+  padding-bottom: 7px;
+}
 .seat.folded .plate {
   opacity: 0.45;
 }
 .seat.folded .seat-cards {
   opacity: 0;
 }
-.seat.gone .avatar {
+.seat.gone .plate {
   filter: grayscale(0.85);
 }
-.seat.out .avatar {
+.seat.out .plate {
   opacity: 0.7;
-}
-.seat.winner .avatar {
-  border-color: var(--gold);
-  box-shadow: 0 0 24px rgba(242, 193, 78, 0.9);
 }
 .seat.me .plate {
   border-color: rgba(242, 193, 78, 0.5);
+}
+.seat.me.to-act .plate,
+.seat.me.winner .plate {
+  border-color: var(--gold);
 }
 .bubble {
   position: absolute;
@@ -929,46 +946,55 @@ button {
     opacity: 0;
   }
 }
-.bet {
+/* ---------- The house dealer ---------- */
+.dealer-seat {
   position: absolute;
-  transform: translate(-50%, -50%);
+  left: 50%;
+  top: 2%;
+  transform: translateX(-50%);
   z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 4px;
-  background: rgba(0, 0, 0, 0.45);
-  padding: 2px 8px 2px 3px;
+  pointer-events: none;
+}
+.dealer-plate {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px 2px 4px;
   border-radius: 999px;
+  background: rgba(6, 18, 12, 0.92);
+  border: 1px solid var(--gold-dark);
   font-weight: 800;
   font-size: 0.82em;
-  font-variant-numeric: tabular-nums;
+  color: #fff3c4;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
 }
-.chip {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #fff 0 28%, var(--red) 30% 56%, #fff 58% 64%, var(--red) 66%);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  flex: none;
-}
-.dealer {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  z-index: 1;
+.dealer-figure {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  fill: #e9d8a6;
+  flex: none;
+}
+.dealer-figure .tie {
+  fill: var(--red);
+}
+.dealer-says {
+  position: relative;
+  max-width: min(200px, 58vw);
+  padding: 2px 10px;
+  border-radius: 10px;
   background: #fff;
   color: #111;
-  font-weight: 900;
-  font-size: 13px;
-  display: grid;
-  place-items: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-  transition:
-    left 0.5s,
-    top 0.5s;
+  font-weight: 700;
+  font-size: 0.78em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  animation: pop 0.25s ease-out;
 }
 
 /* ---------- Your hand + actions ---------- */
@@ -1021,6 +1047,11 @@ button {
   font-size: 1.25em;
   color: var(--gold);
   font-variant-numeric: tabular-nums;
+}
+.my-stack .unit {
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--muted);
 }
 .my-hand-name {
   font-weight: 700;
@@ -1162,14 +1193,6 @@ button {
   padding: 0 10px;
 }
 
-/* On phones your own seat is just the avatar: your cards and chips are shown big underneath. */
-@media (max-width: 899px) {
-  .seat.me .plate,
-  .seat.me .tag:not(.win) {
-    display: none;
-  }
-}
-
 /* Raising opens a panel over the bottom of the screen so the table doesn't get squeezed. */
 .me-panel {
   position: relative;
@@ -1268,7 +1291,7 @@ button {
     flex: 1 1 40%;
   }
   .felt-wrap {
-    inset: 34px 46px 26px;
+    inset: 34px 46px 34px;
   }
   .felt {
     border-radius: 30% / 45% !important;
@@ -1278,17 +1301,18 @@ button {
     --card-md: clamp(30px, 5.4vw, 48px);
     --card-lg: clamp(46px, 8vw, 64px);
     --seat-w: 70px;
-    --avatar: 28px;
     --card-sm: 20px;
-    --offx: 62px;
-    --offy: 44px;
   }
-  .seat .tag.hand-name,
-  .seat .tag:not(.win) {
+  .seat .tag {
     font-size: 0.65em;
   }
-  .seat .tag.hand-name {
-    display: none;
+  .dealer-plate,
+  .dealer-says {
+    font-size: 0.7em;
+  }
+  .dealer-figure {
+    width: 20px;
+    height: 20px;
   }
   .plate {
     padding: 1px 6px;
@@ -1303,6 +1327,10 @@ button {
   }
   .center {
     gap: 4px;
+  }
+  .seat.low,
+  .seat.low.me {
+    transform: translate(-50%, calc(-100% + 24px));
   }
   /* The table is small here, so tabled cards are bigger than the seat cards but still shrink when many hands are out. */
   .tabled-layer {
