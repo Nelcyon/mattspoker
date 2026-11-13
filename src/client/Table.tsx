@@ -3,6 +3,7 @@ import { evaluate } from '../shared/cards.ts';
 import { QUICK_REACTIONS, type PlayerView, type TableView } from '../shared/protocol.ts';
 import type { Reaction, Send } from './App.tsx';
 import { EmptySlot, FlipCard, PlayingCard } from './Card.tsx';
+import { HelpCard } from './Help.tsx';
 import type { NetStatus } from './net.ts';
 import { sounds, unlockAudio } from './prefs.ts';
 import { SettingsSheet } from './Settings.tsx';
@@ -121,7 +122,7 @@ export function TableScreen({
   toast: string | null;
   onLeave: () => void;
 }) {
-  const [sheet, setSheet] = useState<null | 'settings' | 'log' | 'react'>(null);
+  const [sheet, setSheet] = useState<null | 'settings' | 'log' | 'react' | 'help'>(null);
   const [pre, setPre] = useState<Pre>(null);
   const hand = view.hand;
   const me = view.players.find((p) => p.id === view.you) ?? null;
@@ -238,9 +239,14 @@ export function TableScreen({
   return (
     <div ref={screenRef} className={`table-screen ${yourTurn ? 'my-turn' : ''}`} onPointerDown={unlockAudio}>
       <header className="topbar">
-        <button className="top-btn" onClick={() => setSheet('log')}>
-          History
-        </button>
+        <div className="top-left">
+          <button className="top-btn" onClick={() => setSheet('log')}>
+            History
+          </button>
+          <button className="top-btn" onClick={() => setSheet('help')}>
+            Help
+          </button>
+        </div>
         <div className="blinds">
           <span>
             Blinds <b>{fmt(view.smallBlind)}/{fmt(view.bigBlind)}</b>
@@ -357,6 +363,7 @@ export function TableScreen({
       )}
       {sheet === 'settings' && <SettingsSheet view={view} send={send} onClose={() => setSheet(null)} onLeave={onLeave} />}
       {sheet === 'log' && <LogSheet view={view} onClose={() => setSheet(null)} />}
+      {sheet === 'help' && <HelpCard onClose={() => setSheet(null)} />}
     </div>
   );
 }

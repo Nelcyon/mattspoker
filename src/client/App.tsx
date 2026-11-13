@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMsg, ServerMsg, TableView } from '../shared/protocol.ts';
 import { Connection, lastGame, loadSaved, type NetStatus, storeSaved } from './net.ts';
+import { HelpCard } from './Help.tsx';
 import { keepAwake, unlockAudio, usePrefs } from './prefs.ts';
 import { TableScreen } from './Table.tsx';
 
@@ -75,6 +76,7 @@ function Home({ onEnter, notice }: { onEnter: (code: string, name: string) => vo
   const [name, setName] = useState(savedName());
   const [error, setError] = useState<string | null>(notice);
   const [busy, setBusy] = useState(false);
+  const [help, setHelp] = useState(false);
   const last = lastGame();
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -190,7 +192,11 @@ function Home({ onEnter, notice }: { onEnter: (code: string, name: string) => vo
               : "You'll get a 4-letter code to share. You're the host: you choose the blinds and starting chips."}
           </p>
         </form>
+        <button type="button" className="help-link" onClick={() => setHelp(true)}>
+          Help
+        </button>
       </div>
+      {help && <HelpCard onClose={() => setHelp(false)} />}
     </main>
   );
 }
