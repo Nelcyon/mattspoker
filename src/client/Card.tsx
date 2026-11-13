@@ -41,6 +41,18 @@ export function PlayingCard({
   );
 }
 
+/** A card that turns face-up when it mounts (the back shows first, then it flips). Sized by `--tc` in the tabled hands. */
+export function FlipCard({ card, highlight = false }: { card: Card; highlight?: boolean }) {
+  return (
+    <div className="flip-slot">
+      <div className="flip">
+        <PlayingCard card={card} size="sm" highlight={highlight} />
+        <div className="card back sm" aria-hidden />
+      </div>
+    </div>
+  );
+}
+
 export function EmptySlot({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   return <div className={`card slot ${size}`} aria-hidden />;
 }

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { evaluate } from '../shared/cards.ts';
 import { QUICK_REACTIONS, type PlayerView, type TableView } from '../shared/protocol.ts';
 import type { Reaction, Send } from './App.tsx';
-import { EmptySlot, PlayingCard } from './Card.tsx';
+import { EmptySlot, FlipCard, PlayingCard } from './Card.tsx';
 import type { NetStatus } from './net.ts';
 import { sounds, unlockAudio } from './prefs.ts';
 import { SettingsSheet } from './Settings.tsx';
@@ -42,6 +42,38 @@ function colorFor(name: string) {
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
+
+/** Pick black or white text for a background colour. */
+function textOn(hex: string) {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum > 0.62 ? '#161616' : '#fff';
+}
+
+/** Where a seat sits on the table, in % of the felt area, plus the unit vector from the seat towards the middle. */
+function seatSpot(index: number, count: number, portrait: boolean) {
+  // Angle 90° is the bottom of the table; go clockwise.
+  const angle = ((90 + (index * 360) / count) * Math.PI) / 180;
+  // Tall screens use a squarer path so the side seats hug the edges and leave the middle for the cards.
+  const e = portrait ? 0.55 : 1;
+  const c = Math.cos(angle);
+  const sn = Math.sin(angle);
+  const x = 50 + 50 * Math.sign(c) * Math.abs(c) ** e;
+  const y = 50 + 50 * Math.sign(sn) * Math.abs(sn) ** e;
+  const len = Math.hypot(x - 50, y - 50) || 1;
+  return { x, y, dx: -(x - 50) / len, dy: -(y - 50) / len };
+}
+
+/** A hand that has been turned over at the end of the hand (showdown, or shown after everyone folded) goes out on the felt. */
+function isTabled(view: TableView, p: PlayerView) {
+  const hand = view.hand;
+  if (!hand?.done || !p.inHand || p.folded || !p.cards || p.seat === null) return false;
+  // Your own cards are always visible to you, so only count them once you have actually turned them over.
+  return p.id !== view.you || !!p.handName || hand.shown.includes(p.id);
+}
+
+/** Tabled hands sit on a ring between the seats and the board: this is how far in from the seat they go. */
+const RING = { portrait: 0.62, wide: 0.7 };
 
 type Pre = null | 'checkFold' | 'check';
 
@@ -123,6 +155,8 @@ export function TableScreen({
   const myIdx = seated.findIndex((p) => p.id === view.you);
   const ordered = myIdx >= 0 ? [...seated.slice(myIdx), ...seated.slice(0, myIdx)] : seated;
   const spectators = view.players.filter((p) => p.seat === null);
+  // Hands turned over at the end of the hand, in the order they go out on the table.
+  const tabledOrder = new Map(ordered.filter((p) => isTabled(view, p)).map((p, i) => [p.id, i]));
 
   const toActName = hand?.toAct ? view.players.find((p) => p.id === hand.toAct)?.name : null;
   const myCards = me?.cards ?? null;
@@ -229,9 +263,11 @@ export function TableScreen({
               now={now}
               isMe={p.id === view.you}
               portrait={portrait}
+              tabledIndex={tabledOrder.get(p.id)}
               reaction={reactions.find((r) => r.pid === p.id)?.text}
             />
           ))}
+          {tabledOrder.size > 0 && <TabledHands view={view} ordered={ordered} order={tabledOrder} portrait={portrait} />}
         </div>
         {spectators.length > 0 && (
           <div className="watchers">Watching: {spectators.map((s) => s.name).join(', ')}</div>
@@ -277,6 +313,222 @@ function isInWinningHand(view: TableView, card: string) {
   return view.players.some((p) => winners.includes(p.id) && p.best?.includes(card));
 }
 
+// ---------------- Tabled hands ----------------
+
+/** Where a tabled hand ends up (px from the felt area's top-left) and how far it slides in from its seat. */
+type Spot = { x: number; y: number; dx: number; dy: number };
+type Box = { l: number; t: number; r: number; b: number };
+
+/**
+ * Finds a spot for every tabled hand: start on the ring between the seat and the middle, then push away from anything
+ * it would cover (the board, pot, bets, dealer button, seats, result text) and from the other hands. Runs once per hand.
+ */
+function layoutHands(layer: HTMLElement, homes: Map<string, { x: number; y: number }>): { spots: Record<string, Spot>; clean: boolean } {
+  const W = layer.offsetWidth;
+  const H = layer.offsetHeight;
+  const origin = layer.getBoundingClientRect();
+  const PAD = 2;
+  const box = (r: DOMRect): Box => ({ l: r.left - origin.left - PAD, t: r.top - origin.top - PAD, r: r.right - origin.left + PAD, b: r.bottom - origin.top + PAD });
+  const wrap = layer.parentElement!;
+  const obstacles: Box[] = [];
+  wrap
+    .querySelectorAll('.board, .pot > span:first-child, .bet, .dealer, .seat .avatar, .seat .plate, .seat .tag, .seat:not(.folded) .seat-cards:not(.leaving)')
+    .forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) obstacles.push(box(r));
+    });
+  wrap.querySelectorAll('.status-line > div').forEach((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    for (const r of range.getClientRects()) if (r.width > 0) obstacles.push(box(r));
+  });
+
+  const items = [...layer.querySelectorAll<HTMLElement>('.tabled')].flatMap((el) => {
+    const home = homes.get(el.dataset.pid ?? '');
+    if (!home) return [];
+    return [{ id: el.dataset.pid!, on: false, w: el.offsetWidth, h: el.offsetHeight, hx: (home.x / 100) * W, hy: (home.y / 100) * H, x: (home.x / 100) * W, y: (home.y / 100) * H }];
+  });
+  type Item = (typeof items)[number];
+  const bounds = (a: Item): Box => ({ l: a.x - a.w / 2, t: a.y - a.h / 2, r: a.x + a.w / 2, b: a.y + a.h / 2 });
+  const overlap = (p: Box, q: Box) => Math.max(0, Math.min(p.r, q.r) - Math.max(p.l, q.l)) * Math.max(0, Math.min(p.b, q.b) - Math.max(p.t, q.t));
+  const grow = (m: Box): Box => ({ l: m.l - PAD, t: m.t - PAD, r: m.r + PAD, b: m.b + PAD });
+  // What is wrong with hand `a` where it stands: covering things is bad, covering another hand is bad, being far from its seat is a little bad.
+  const trouble = (a: Item) => {
+    const m = bounds(a);
+    let s = 0;
+    for (const o of obstacles) s += 20 * overlap(m, o);
+    for (const b of items) if (b !== a && b.on) s += 10 * overlap(grow(m), bounds(b));
+    s += 0.004 * ((a.x - a.hx) ** 2 + (a.y - a.hy) ** 2);
+    return s;
+  };
+  // First put each hand at the best free spot on a coarse grid (so none starts boxed in by a seat, the result text or the dealer button),
+  // then polish with simulated annealing.
+  for (const a of items) {
+    let bestCost = Infinity;
+    let bx = a.hx;
+    let by = a.hy;
+    for (let y = a.h / 2; y <= H - a.h / 2; y += 8) {
+      for (let x = a.w / 2; x <= W - a.w / 2; x += 8) {
+        a.x = x;
+        a.y = y;
+        const cost = trouble(a);
+        if (cost < bestCost) {
+          bestCost = cost;
+          bx = x;
+          by = y;
+        }
+      }
+    }
+    a.x = bx;
+    a.y = by;
+    a.on = true;
+  }
+  const start = items.map((a) => ({ x: a.x, y: a.y }));
+  // Simulated annealing from a few fixed seeds, keeping the best: the same table always gives the same layout.
+  // A few thousand cheap moves, once per hand.
+  const total = () => items.reduce((s, a) => s + trouble(a), 0);
+  const STEPS = 4000;
+  let best: { x: number; y: number }[] | null = null;
+  let bestScore = Infinity;
+  for (const seed0 of [7, 19, 31, 43]) {
+    if (!items.length) break;
+    let seed = seed0;
+    const rnd = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+    items.forEach((a, i) => {
+      a.x = start[i].x;
+      a.y = start[i].y;
+    });
+    for (let n = 0; n < STEPS; n++) {
+      const k = 1 - n / STEPS;
+      const a = items[Math.floor(rnd() * items.length)];
+      const before = trouble(a);
+      const { x, y } = a;
+      const step = 3 + 40 * k;
+      a.x = Math.max(a.w / 2, Math.min(W - a.w / 2, x + (rnd() - 0.5) * 2 * step));
+      a.y = Math.max(a.h / 2, Math.min(H - a.h / 2, y + (rnd() - 0.5) * 2 * step));
+      const delta = trouble(a) - before;
+      if (delta > 0 && rnd() > Math.exp(-delta / (1 + 80 * k * k))) {
+        a.x = x;
+        a.y = y;
+      }
+    }
+    const score = total();
+    if (score < bestScore) {
+      bestScore = score;
+      best = items.map((a) => ({ x: a.x, y: a.y }));
+    }
+  }
+  best?.forEach((p, i) => {
+    items[i].x = p.x;
+    items[i].y = p.y;
+  });
+  // Clean means nothing is covered and no two hands touch. If it isn't, the caller can try again with smaller hands.
+  const clash = (a: Item) => {
+    const m = bounds(a);
+    let s = 0;
+    for (const o of obstacles) s += overlap(m, o);
+    for (const b of items) if (b !== a) s += overlap(m, bounds(b));
+    return s;
+  };
+  const clean = items.every((a) => clash(a) < 1);
+  const out: Record<string, Spot> = {};
+  for (const a of items) {
+    const av = wrap.querySelector(`[data-pid="${a.id}"] .avatar`)?.getBoundingClientRect();
+    const sx = av ? av.left - origin.left + av.width / 2 : a.x;
+    const sy = av ? av.top - origin.top + av.height / 2 : a.y;
+    out[a.id] = { x: Math.round(a.x), y: Math.round(a.y), dx: Math.round(sx - a.x), dy: Math.round(sy - a.y) };
+  }
+  return { spots: out, clean };
+}
+
+/** Revealed hands, out on the felt: the cards slide from the seat, flip face-up, and wait under a name pill. */
+function TabledHands({
+  view,
+  ordered,
+  order,
+  portrait,
+}: {
+  view: TableView;
+  ordered: PlayerView[];
+  order: Map<string, number>;
+  portrait: boolean;
+}) {
+  const hand = view.hand!;
+  const ring = portrait ? RING.portrait : RING.wide;
+  // Past this many hands the cards and pills shrink. Tall phone screens have the least room, so they shrink sooner.
+  const compact = order.size > (portrait ? 4 : 6);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const [spots, setSpots] = useState<Record<string, Spot>>({});
+  // Set when even the compact size would not fit without covering something (10 hands on a small phone): drops to the smallest size.
+  const [tightFor, setTightFor] = useState<string | null>(null);
+  const [size, setSize] = useState('');
+  const homes = new Map(
+    ordered.map((p, index) => {
+      const { x, y } = seatSpot(index, ordered.length, portrait);
+      return [p.id, { x: 50 + ring * (x - 50), y: 50 + ring * (y - 50) }] as const;
+    }),
+  );
+  // Start each hand on the ring, then nudge it clear of the board, seats, bets and its neighbours (once per hand, not per frame).
+  const key = `${hand.id}:${[...order.keys()].join()}:${portrait}:${size}`;
+  const tight = tightFor === key;
+  const tightKey = `${key}:${tight}`;
+  useLayoutEffect(() => {
+    if (!layerRef.current) return;
+    const { spots: next, clean } = layoutHands(layerRef.current, homes);
+    setSpots(next);
+    if (!clean && compact && !tight) setTightFor(key);
+  }, [tightKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = layerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setSize(`${el.offsetWidth}x${el.offsetHeight}`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={layerRef} className={`tabled-layer ${compact ? 'compact' : ''} ${tight ? 'tight' : ''}`}>
+      {ordered.map((p) => {
+        const i = order.get(p.id);
+        if (i === undefined || !p.cards) return null;
+        const home = homes.get(p.id)!;
+        const spot = spots[p.id];
+        const winner = hand.winners.includes(p.id);
+        const color = colorFor(p.name);
+        return (
+          <div
+            key={`${hand.id}:${p.id}`}
+            data-pid={p.id}
+            className={`tabled ${winner ? 'win' : ''}`}
+            style={{
+              left: spot ? `${spot.x}px` : `${home.x}%`,
+              top: spot ? `${spot.y}px` : `${home.y}%`,
+              ['--dx' as string]: `${spot?.dx ?? 0}px`,
+              ['--dy' as string]: `${spot?.dy ?? 0}px`,
+              ['--delay' as string]: `${i * 120}ms`,
+              ['--c' as string]: color,
+              ['--on' as string]: textOn(color),
+            }}
+            aria-label={`${p.id === view.you ? 'You' : p.name}${p.handName ? `: ${p.handName}` : ''}${winner && p.won > 0 ? `, won ${fmt(p.won)}` : ''}`}
+          >
+            <div className="tabled-cards">
+              {p.cards.map((c) => (
+                <FlipCard key={c} card={c} highlight={winner && !!p.best?.includes(c)} />
+              ))}
+            </div>
+            <div className="tabled-pill">
+              <span className="nm">
+                {p.id === view.you ? 'You' : p.name}
+                {winner && p.won > 0 ? ` +${fmt(p.won)}` : ''}
+              </span>
+              {p.handName && <span className="hn">{compact ? p.handName.split(',')[0] : p.handName}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---------------- Seat ----------------
 
 function Seat({
@@ -288,6 +540,7 @@ function Seat({
   isMe,
   reaction,
   portrait,
+  tabledIndex,
 }: {
   p: PlayerView;
   index: number;
@@ -297,20 +550,13 @@ function Seat({
   now: number;
   isMe: boolean;
   reaction?: string;
+  /** Set when this player's hand has gone out onto the table (and in what order). */
+  tabledIndex?: number;
 }) {
   const hand = view.hand;
-  // Angle 90° is the bottom of the table; go clockwise.
-  const angle = ((90 + (index * 360) / count) * Math.PI) / 180;
-  // Tall screens use a squarer path so the side seats hug the edges and leave the middle for the cards.
-  const e = portrait ? 0.55 : 1;
-  const c = Math.cos(angle);
-  const sn = Math.sin(angle);
-  const x = 50 + 50 * Math.sign(c) * Math.abs(c) ** e;
-  const y = 50 + 50 * Math.sign(sn) * Math.abs(sn) ** e;
-  // Unit vector from the seat towards the middle, for the bet and the dealer button.
-  const len = Math.hypot(x - 50, y - 50) || 1;
-  const dx = -(x - 50) / len;
-  const dy = -(y - 50) / len;
+  // Unit vector (dx, dy) from the seat towards the middle, for the bet and the dealer button.
+  const { x, y, dx, dy } = seatSpot(index, count, portrait);
+  const tabled = tabledIndex !== undefined;
   const at = (k: number, side = 0) => ({
     left: `calc(${x}% + ${(dx * k - dy * side).toFixed(3)} * var(--offx))`,
     top: `calc(${y}% + ${(dy * k + dx * side).toFixed(3)} * var(--offy))`,
@@ -339,6 +585,7 @@ function Seat({
   return (
     <>
       <div
+        data-pid={p.id}
         className={`seat ${isMe ? 'me' : ''} ${toAct ? 'to-act' : ''} ${p.folded ? 'folded' : ''} ${winner ? 'winner' : ''} ${
           !p.online || p.away ? 'gone' : ''
         } ${p.inHand ? '' : 'out'}`}
@@ -346,15 +593,10 @@ function Seat({
         aria-label={label}
       >
         {showCards && (
-          <div className={`seat-cards ${p.cards ? 'shown' : ''}`}>
-            {p.cards ? (
-              p.cards.map((c) => <PlayingCard key={c} card={c} size="sm" highlight={winner && !!p.best?.includes(c)} />)
-            ) : (
-              <>
-                <PlayingCard card={null} size="sm" />
-                <PlayingCard card={null} size="sm" />
-              </>
-            )}
+          // Face-down cards stay at the seat. Once the hand is turned over they leave as the tabled cards slide out.
+          <div className={`seat-cards ${tabled ? 'leaving' : ''}`} style={tabledIndex !== undefined ? { ['--delay' as string]: `${tabledIndex * 120}ms` } : undefined}>
+            <PlayingCard card={null} size="sm" />
+            <PlayingCard card={null} size="sm" />
           </div>
         )}
         <div
@@ -373,12 +615,15 @@ function Seat({
           <div className="name">{isMe ? 'You' : p.name}</div>
           <div className="stack">{p.allIn && !hand?.done ? 'ALL IN' : fmt(p.stack)}</div>
         </div>
-        {(statusText || p.lastAction || p.handName || (winner && p.won > 0)) && (
-          <div className={`tag ${winner ? 'win' : ''}`}>
-            {winner && p.won > 0 ? `+${fmt(p.won)}` : p.handName ?? (p.lastAction && !p.lastAction.startsWith('Small') && !p.lastAction.startsWith('Big') ? p.lastAction : statusText ?? p.lastAction)}
-          </div>
-        )}
-        {winner && p.handName && <div className="tag hand-name">{p.handName}</div>}
+        {/* A tabled hand shows its hand name and winnings on its pill out on the felt, so the seat doesn't repeat them. */}
+        {tabled
+          ? statusText && <div className="tag">{statusText}</div>
+          : (statusText || p.lastAction || p.handName || (winner && p.won > 0)) && (
+              <div className={`tag ${winner ? 'win' : ''}`}>
+                {winner && p.won > 0 ? `+${fmt(p.won)}` : p.handName ?? (p.lastAction && !p.lastAction.startsWith('Small') && !p.lastAction.startsWith('Big') ? p.lastAction : statusText ?? p.lastAction)}
+              </div>
+            )}
+        {winner && p.handName && !tabled && <div className="tag hand-name">{p.handName}</div>}
         {reaction && (
           <div className="bubble" role="status">
             {reaction}

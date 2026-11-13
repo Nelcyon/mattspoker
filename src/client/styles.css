@@ -658,8 +658,135 @@ button {
 .seat-cards .card:last-child {
   transform: rotate(7deg) translateX(-3px);
 }
-.seat-cards.shown {
-  margin-bottom: calc(var(--card-sm) * -0.25);
+/* When the hand is turned over, the seat's face-down cards vanish just as the tabled cards start to slide out. */
+.seat-cards.leaving {
+  animation: vanish 0.01s linear var(--delay, 0ms) forwards;
+}
+@keyframes vanish {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---------- Tabled hands: revealed cards out on the felt ---------- */
+.tabled-layer {
+  --tc: var(--card-sm);
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.tabled-layer.compact {
+  --tc: calc(var(--card-sm) * 0.66);
+}
+.tabled-layer.compact .tabled {
+  gap: 1px;
+}
+/* Last resort when even the compact size doesn't fit (10 hands on a small phone): smaller cards, name only. The hand name is still read out. */
+.tabled-layer.tight {
+  --tc: calc(var(--card-sm) * 0.52);
+}
+.tabled-layer.tight .tabled-pill .hn {
+  display: none;
+}
+.tabled-layer.compact .tabled-pill {
+  font-size: 0.6em;
+  padding: 0 5px;
+  border-radius: 7px;
+  max-width: 76px;
+}
+.tabled {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  animation: tableIn 0.4s cubic-bezier(0.2, 0.8, 0.3, 1) var(--delay, 0ms) backwards;
+}
+@keyframes tableIn {
+  from {
+    transform: translate(-50%, -50%) translate(var(--dx, 0px), var(--dy, 0px)) scale(0.7);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+}
+.tabled-cards {
+  display: flex;
+}
+.flip-slot {
+  perspective: 300px;
+}
+.tabled-cards .flip-slot:first-child {
+  transform: rotate(-6deg) translateX(3px);
+}
+.tabled-cards .flip-slot:last-child {
+  transform: rotate(6deg) translateX(-3px);
+}
+.flip {
+  position: relative;
+  width: var(--tc);
+  height: calc(var(--tc) * 1.4);
+  transform-style: preserve-3d;
+  animation: flipUp 0.35s ease-out calc(var(--delay, 0ms) + 0.22s) backwards;
+}
+@keyframes flipUp {
+  from {
+    transform: rotateY(180deg);
+  }
+}
+.flip .card {
+  --w: var(--tc);
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.flip .card.back {
+  transform: rotateY(180deg);
+}
+.tabled-pill {
+  background: var(--c);
+  color: var(--on);
+  text-shadow: none;
+  font-weight: 700;
+  font-size: 0.72em;
+  line-height: 1.2;
+  text-align: center;
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  max-width: calc(var(--seat-w) + 8px);
+}
+.tabled-pill .nm,
+.tabled-pill .hn {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tabled-pill .hn {
+  font-weight: 600;
+  font-size: 0.92em;
+}
+.tabled.win .tabled-pill {
+  background: var(--gold);
+  color: #2a1c00;
+  border-color: #fff3c4;
+  box-shadow: 0 0 12px rgba(242, 193, 78, 0.75);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tabled,
+  .flip {
+    animation: none;
+  }
+  .seat-cards.leaving {
+    animation: none;
+    opacity: 0;
+  }
 }
 .avatar {
   --ring: 1;
@@ -1176,6 +1303,13 @@ button {
   }
   .center {
     gap: 4px;
+  }
+  /* The table is small here, so tabled cards are bigger than the seat cards but still shrink when many hands are out. */
+  .tabled-layer {
+    --tc: 26px;
+  }
+  .tabled-layer.compact {
+    --tc: 21px;
   }
 }
 
